@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>สร้าง PO (บันทึกเป็นรูปภาพ)</title>
+  <title>สร้าง PO</title>
   
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
   
-  <!-- 🟢 เพิ่ม Library html2canvas ตรงนี้ -->
+  <!-- 🟢 Library html2canvas สำหรับสร้างรูปภาพ -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
@@ -24,7 +24,7 @@
     /* 🟢 สไตล์สำหรับใบสั่งซื้อที่จะใช้ถ่ายรูป */
     #po-receipt {
       background-color: white; padding: 20px; width: 100%; max-width: 400px;
-      margin: 0 auto; border: 1px solid #000; color: #000; display: none; /* ซ่อนไว้ก่อน */
+      margin: 0 auto; border: 1px solid #ddd; color: #000; display: none;
     }
     .receipt-table { width: 100%; margin-top: 15px; border-collapse: collapse; }
     .receipt-table th, .receipt-table td { border-bottom: 1px dashed #ccc; padding: 8px 0; font-size: 14px; }
@@ -57,12 +57,14 @@
             <textarea id="docRemark" class="form-control" rows="2" placeholder="ระบุหมายเหตุ เช่น ด่วนมาก, ส่งที่สาขา 2 (ถ้ามี)"></textarea>
           </div>
 
-          <button type="submit" class="btn btn-success w-100 py-3 fs-5 fw-bold shadow">บันทึกและสร้างรูปภาพ PO</button>
+          <button type="submit" class="btn btn-success w-100 py-3 fs-5 fw-bold shadow">
+             สร้างบิล, ส่งแชท และพิมพ์ภาพ
+          </button>
         </form>
       </div>
     </div>
 
-    <!-- 🟢 1. โครงสร้างใบ PO (HTML) ที่เตรียมไว้สำหรับถ่ายรูป -->
+    <!-- 🟢 โครงสร้างใบ PO (HTML) ที่เตรียมไว้สำหรับถ่ายรูป -->
     <div id="po-receipt">
       <h3 style="text-align: center; color: #198754; margin-bottom: 5px;">ใบสั่งซื้อสินค้า (PO)</h3>
       <p style="text-align: center; font-size: 12px; color: #666;" id="receipt-date"></p>
@@ -77,20 +79,19 @@
             <th style="text-align: right;">จำนวน</th>
           </tr>
         </thead>
-        <tbody id="receipt-items">
-          <!-- รายการสินค้าจะถูกดึงมาใส่ตรงนี้ตอนกดปุ่ม -->
-        </tbody>
+        <tbody id="receipt-items"></tbody>
       </table>
       <br>
       <p style="text-align: center; font-size: 12px;">-- ขอบคุณที่ใช้บริการ --</p>
     </div>
 
-    <!-- 🟢 2. พื้นที่สำหรับแสดงรูปภาพที่ถ่ายเสร็จแล้ว เพื่อให้ผู้ใช้กดเซฟ -->
+    <!-- 🟢 พื้นที่สำหรับแสดงรูปภาพที่ถ่ายเสร็จแล้ว เพื่อให้ผู้ใช้กดเซฟ -->
     <div id="image-result-container" style="display: none; text-align: center; margin-top: 20px;">
-      <h5 class="text-success fw-bold">สร้างรูปภาพสำเร็จ!</h5>
-      <p class="text-danger fw-bold blink">👇 แตะที่รูปภาพค้างไว้ แล้วเลือก "บันทึกรูปภาพ"</p>
+      <h5 class="text-success fw-bold">✅ ทำรายการสำเร็จ!</h5>
+      <p class="text-danger fw-bold blink">👇 แตะที่รูปภาพค้างไว้ แล้วเลือก "บันทึกรูปภาพ" เพื่อนำไปปริ้น</p>
       <div id="final-image"></div>
       <button class="btn btn-outline-secondary mt-4 w-100" onclick="location.reload()">+ สร้าง PO ใบใหม่</button>
+      <button class="btn btn-outline-danger mt-2 w-100" onclick="liff.closeWindow()">ปิดหน้าต่าง</button>
     </div>
 
   </div>
@@ -173,27 +174,25 @@
       e.preventDefault();
       
       const submitBtn = e.target.querySelector('button[type="submit"]');
-      submitBtn.innerHTML = '⏳ กำลังบันทึกและสร้างรูปภาพ...';
+      submitBtn.innerHTML = '⏳ กำลังประมวลผล...';
       submitBtn.disabled = true;
 
-      // 🟢 1. เตรียมข้อมูลเพื่อนำไปใส่ในใบเสร็จ HTML (แทนการส่ง Share Picker)
       const supplierId = $('#supplierSelect').val();
-      const supplierName = $("#supplierSelect option:selected").text(); // ดึงชื่อซัพพลายเออร์ที่เลือกมาแสดง
+      const supplierName = $("#supplierSelect option:selected").text(); 
       const docRemark = $('#docRemark').val(); 
+      
       let items = [];
-      let receiptHtml = ''; // เก็บ HTML ของรายการสินค้า
+      let receiptHtml = ''; 
 
       $('.item-row').each(function() {
         const prodId = $(this).find('.product-select').val();
-        const prodName = $(this).find('.product-select option:selected').text(); // ดึงชื่อสินค้าที่เลือก
+        const prodName = $(this).find('.product-select option:selected').text(); 
         const qty = $(this).find('.qty-input').val();
         const unit = $(this).find('.unit-input').val(); 
         const remark = $(this).find('.item-remark').val(); 
         
         if(prodId && qty && unit) { 
             items.push({ productId: prodId, quantity: qty, unit: unit, remark: remark }); 
-            
-            // นำข้อมูลรายการสินค้า มาต่อกันเป็นแถวตาราง <tr>
             let detail = remark ? `<br><small style="color:gray;">(${remark})</small>` : '';
             receiptHtml += `
               <tr>
@@ -204,13 +203,12 @@
         }
       });
 
-      // 🟢 2. ยัดข้อมูลลงใน HTML โครงสร้างใบ PO
+      // ยัดข้อมูลลงหน้า HTML เตรียมถ่ายรูป
       document.getElementById('receipt-date').innerText = "วันที่: " + new Date().toLocaleString('th-TH');
       document.getElementById('receipt-supplier').innerText = supplierName;
       document.getElementById('receipt-remark').innerText = docRemark ? docRemark : "-";
       document.getElementById('receipt-items').innerHTML = receiptHtml;
 
-      // ส่งข้อมูลเข้าฐานข้อมูล (Google Sheets) เหมือนเดิม
       const payload = {
         userId: currentUserId,
         supplierId: supplierId,
@@ -218,44 +216,52 @@
         items: items
       };
 
+      // 🟢 เริ่มยิงข้อมูลเข้าหลังบ้าน
       fetch(API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify(payload)
       })
       .then(response => response.json())
-      .then(() => {
-          // 🟢 3. เมื่อระบบหลังบ้านบันทึกเสร็จ ให้ทำการถ่ายรูป (Capture HTML to Image)
+      .then(async flexObj => {
           
-          // โชว์กล่องใบ PO ก่อนถ่ายรูป
+          // 🟢 1. ถ่ายรูปเก็บไว้โชว์บนหน้าจอ (ทำงานหลังบ้านเงียบๆ)
           document.getElementById('po-receipt').style.display = "block"; 
-          
-          html2canvas(document.getElementById('po-receipt'), {
-            scale: 2, // ให้ภาพชัดขึ้น 2 เท่า จะได้ปริ้นสวยๆ
-            backgroundColor: "#ffffff"
-          }).then(canvas => {
-            
-            // แปลงเป็นรูปภาพ
-            const imgData = canvas.toDataURL("image/png");
-            
-            // สร้างแท็ก <img> เพื่อโชว์ภาพ
-            const imgElement = `<img src="${imgData}" style="width: 100%; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);">`;
-            document.getElementById('final-image').innerHTML = imgElement;
-            
-            // ปิด Form ต้นฉบับ และปิดใบ HTML ต้นฉบับ
-            document.getElementById('main-card').style.display = "none"; 
-            document.getElementById('po-receipt').style.display = "none"; 
-            
-            // เปิดโชว์รูปภาพที่ถ่ายเสร็จแล้วให้ผู้ใช้เซฟ
-            document.getElementById('image-result-container').style.display = "block";
-            
-            // เลื่อนหน้าจอไปบนสุด
-            window.scrollTo(0, 0);
+          const canvas = await html2canvas(document.getElementById('po-receipt'), {
+            scale: 2, backgroundColor: "#ffffff"
           });
+          const imgData = canvas.toDataURL("image/png");
+          document.getElementById('final-image').innerHTML = `<img src="${imgData}" style="width: 100%; border-radius: 8px; border: 1px solid #ddd;">`;
+          
+          // เปลี่ยนหน้าจอเป็นโหมดโชว์รูปภาพ
+          document.getElementById('main-card').style.display = "none"; 
+          document.getElementById('po-receipt').style.display = "none"; 
+          document.getElementById('image-result-container').style.display = "block";
+          window.scrollTo(0, 0);
+
+          // 🟢 2. เรียก Share Target Picker ขึ้นมาให้ผู้ใช้ส่ง Flex Message
+          try {
+             if (liff.isApiAvailable('shareTargetPicker')) {
+                 const res = await liff.shareTargetPicker([flexObj]);
+                 // 💡 หมายเหตุ: เราเอาคำสั่ง liff.closeWindow() ออกแล้ว!
+                 // เพื่อให้พอกดแชร์เสร็จ ผู้ใช้ยังคงอยู่ในหน้านี้และเซฟรูปลงมือถือได้
+                 if (res) {
+                     console.log("แชร์สำเร็จ");
+                 }
+             } else {
+                 alert("Share Target Picker ยังไม่เปิดใช้งาน กรุณาตั้งค่าใน LINE Developers");
+             }
+          } catch (err) {
+             console.error("Share error:", err);
+             alert("Error จาก LINE: " + err.message);
+          }
+
+          submitBtn.innerHTML = 'สร้างบิล, ส่งแชท และพิมพ์ภาพ';
+          submitBtn.disabled = false;
       })
       .catch(err => {
-          alert("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์ กรุณาลองใหม่");
-          submitBtn.innerHTML = 'บันทึกและสร้างรูปภาพ PO';
+          alert("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์");
+          submitBtn.innerHTML = 'สร้างบิล, ส่งแชท และพิมพ์ภาพ';
           submitBtn.disabled = false;
       });
     });
