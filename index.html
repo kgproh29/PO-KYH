@@ -68,9 +68,12 @@
     <div id="po-receipt">
       <h3 style="text-align: center; color: #198754; margin-bottom: 5px;">ใบสั่งซื้อสินค้า (PO)</h3>
       <p style="text-align: center; font-size: 12px; color: #666;" id="receipt-date"></p>
-      <hr>
-      <p style="margin: 0; font-weight: bold; font-size: 14px;">ส่งถึง: <span id="receipt-supplier" style="font-weight: normal;"></span></p>
-      <p style="margin: 0; font-size: 14px;">หมายเหตุ: <span id="receipt-remark"></span></p>
+      <hr style="margin: 10px 0;">
+      
+      <!-- 🟢 เพิ่มช่องแสดงเลขที่ และซ่อนรหัสซัพพลายเออร์ -->
+      <p style="margin: 0; font-size: 14px;"><strong>เลขที่:</strong> <span id="receipt-docno"></span></p>
+      <p style="margin: 0; font-size: 14px;"><strong>ส่งถึง:</strong> <span id="receipt-supplier"></span></p>
+      <p style="margin: 0; font-size: 14px;"><strong>หมายเหตุ:</strong> <span id="receipt-remark"></span></p>
       
       <table class="receipt-table">
         <thead>
@@ -82,7 +85,7 @@
         <tbody id="receipt-items"></tbody>
       </table>
       <br>
-      <p style="text-align: center; font-size: 12px;">-- ขอบคุณที่ใช้บริการ --</p>
+      <!-- 🟢 ลบคำขอบคุณออกแล้ว -->
     </div>
 
     <!-- 🟢 พื้นที่สำหรับแสดงรูปภาพที่ถ่ายเสร็จแล้ว เพื่อให้ผู้ใช้กดเซฟ -->
@@ -177,16 +180,22 @@
       submitBtn.innerHTML = '⏳ กำลังประมวลผล...';
       submitBtn.disabled = true;
 
+      // 🟢 1. จัดการชื่อซัพพลายเออร์ (ตัดรหัสออก)
       const supplierId = $('#supplierSelect').val();
-      const supplierName = $("#supplierSelect option:selected").text(); 
+      const supplierFullText = $("#supplierSelect option:selected").text(); 
+      const supplierNameOnly = supplierFullText.replace(supplierId + " - ", ""); 
+      
       const docRemark = $('#docRemark').val(); 
       
       let items = [];
       let receiptHtml = ''; 
 
       $('.item-row').each(function() {
+        // 🟢 2. จัดการชื่อสินค้า (ตัดรหัสออก)
         const prodId = $(this).find('.product-select').val();
-        const prodName = $(this).find('.product-select option:selected').text(); 
+        const prodFullText = $(this).find('.product-select option:selected').text(); 
+        const prodNameOnly = prodFullText.replace(prodId + " - ", ""); 
+        
         const qty = $(this).find('.qty-input').val();
         const unit = $(this).find('.unit-input').val(); 
         const remark = $(this).find('.item-remark').val(); 
@@ -196,16 +205,18 @@
             let detail = remark ? `<br><small style="color:gray;">(${remark})</small>` : '';
             receiptHtml += `
               <tr>
-                <td style="text-align: left;">${prodName} ${detail}</td>
+                <td style="text-align: left;">${prodNameOnly} ${detail}</td>
                 <td style="text-align: right; font-weight: bold;">${qty} ${unit}</td>
               </tr>
             `;
         }
       });
 
-      // ยัดข้อมูลลงหน้า HTML เตรียมถ่ายรูป
+      // 🟢 3. ยัดข้อมูลลงหน้า HTML โครงสร้างรูปภาพ 
+      // (ส่วนเลขที่เอกสาร ใส่คำว่า รอเลขที่... ไว้ก่อน)
       document.getElementById('receipt-date').innerText = "วันที่: " + new Date().toLocaleString('th-TH');
-      document.getElementById('receipt-supplier').innerText = supplierName;
+      document.getElementById('receipt-docno').innerText = "⏳ รอเลขที่จากระบบ..."; 
+      document.getElementById('receipt-supplier').innerText = supplierNameOnly;
       document.getElementById('receipt-remark').innerText = docRemark ? docRemark : "-";
       document.getElementById('receipt-items').innerHTML = receiptHtml;
 
@@ -216,16 +227,20 @@
         items: items
       };
 
-      // 🟢 เริ่มยิงข้อมูลเข้าหลังบ้าน
+      // 🟢 เริ่มยิงข้อมูลเข้า Google Script 
       fetch(API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify(payload)
       })
       .then(response => response.json())
-      .then(async flexObj => {
+      .then(async responseData => {
           
-          // 🟢 1. ถ่ายรูปเก็บไว้โชว์บนหน้าจอ (ทำงานหลังบ้านเงียบๆ)
+          // 🟢 4. ได้รับเลขจาก Google Script แล้ว เอามายัดลงในใบเสร็จ
+          // (อ้างอิงจากตัวแปร poNumber ที่แก้ในไฟล์ .gs)
+          document.getElementById('receipt-docno').innerText = responseData.poNumber || "ไม่ระบุ";
+          
+          // 🟢 5. เลขมาครบแล้ว ทำการสร้างรูปภาพทันที
           document.getElementById('po-receipt').style.display = "block"; 
           const canvas = await html2canvas(document.getElementById('po-receipt'), {
             scale: 2, backgroundColor: "#ffffff"
@@ -239,17 +254,15 @@
           document.getElementById('image-result-container').style.display = "block";
           window.scrollTo(0, 0);
 
-          // 🟢 2. เรียก Share Target Picker ขึ้นมาให้ผู้ใช้ส่ง Flex Message
+          // 🟢 6. เรียก Share Target Picker เพื่อส่ง Flex (อ้างอิงจากตัวแปร flexData)
           try {
              if (liff.isApiAvailable('shareTargetPicker')) {
-                 const res = await liff.shareTargetPicker([flexObj]);
-                 // 💡 หมายเหตุ: เราเอาคำสั่ง liff.closeWindow() ออกแล้ว!
-                 // เพื่อให้พอกดแชร์เสร็จ ผู้ใช้ยังคงอยู่ในหน้านี้และเซฟรูปลงมือถือได้
+                 const res = await liff.shareTargetPicker([responseData.flexData]);
                  if (res) {
                      console.log("แชร์สำเร็จ");
                  }
              } else {
-                 alert("Share Target Picker ยังไม่เปิดใช้งาน กรุณาตั้งค่าใน LINE Developers");
+                 alert("Share Target Picker ยังไม่เปิดใช้งาน");
              }
           } catch (err) {
              console.error("Share error:", err);
